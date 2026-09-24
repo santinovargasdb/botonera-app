@@ -250,6 +250,21 @@ body.modo-eliminar .pad:nth-child(3n) { animation-delay: 0.18s; }
   50% { rotate: 1.2deg; }
 }
 
+/* ---------- Avisos ---------- */
+
+.aviso {
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--peligro) 18%, var(--superficie));
+  border: 2px solid var(--peligro);
+  color: var(--crema);
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.error-guardar { color: var(--peligro); font-weight: 700; margin-bottom: 10px; }
+
 /* ---------- Estado vacío ---------- */
 
 .vacio {

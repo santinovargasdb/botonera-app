@@ -1,55 +1,82 @@
-// == Botonera — lógica de la app ==
-// Persistencia en IndexedDB: cada botón guarda { id, num, titulo, audio(Blob), imagen(Blob|null) }
+// == Botonesmata — lógica de la app ==
+// Botonera compartida: los botones viven en Supabase (tabla `botones` +
+// bucket `sonidos`). Todos los que abren la página ven la misma botonera.
 
 "use strict";
 
 // ---------- Constantes ----------
 
 const COLORES_PADS = ["#ff6161", "#ff9f45", "#ffd93d", "#6bcb77", "#4d96ff", "#b983ff"];
-const DB_NOMBRE = "botonera";
-const DB_STORE = "botones";
 const CLAVE_VOLUMEN = "botonera-volumen";
+const BUCKET = "sonidos";
 
-// ---------- IndexedDB ----------
+// ---------- Cliente Supabase ----------
 
-function abrirDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NOMBRE, 1);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(DB_STORE, { keyPath: "id" });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+const config = window.BOTONERA_CONFIG || {};
+const configurada = config.SUPABASE_URL && !config.SUPABASE_URL.startsWith("PONER_");
+const supa = configurada
+  ? window.supabase.createClient(config.SUPABASE_URL, config.SUPABASE_ANON_KEY)
+  : null;
+
+function urlPublica(path) {
+  return supa.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
 }
 
 async function dbTodos() {
-  const db = await abrirDB();
-  return new Promise((resolve, reject) => {
-    const req = db.transaction(DB_STORE, "readonly").objectStore(DB_STORE).getAll();
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  const { data, error } = await supa
+    .from("botones")
+    .select("*")
+    .order("num", { ascending: true })
+    .order("creado", { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
-async function dbGuardar(boton) {
-  const db = await abrirDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, "readwrite");
-    tx.objectStore(DB_STORE).put(boton);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
+// Sube audio (y opcionalmente imagen) al bucket y crea la fila del botón
+async function dbGuardar({ num, titulo, audioBlob, nombreAudio, imagenBlob, nombreImagen }) {
+  const id = crypto.randomUUID();
+
+  const audioPath = `${id}/audio.${extension(audioBlob, nombreAudio)}`;
+  const subida = await supa.storage.from(BUCKET).upload(audioPath, audioBlob, {
+    contentType: audioBlob.type || "application/octet-stream",
   });
+  if (subida.error) throw subida.error;
+
+  let imagenPath = null;
+  if (imagenBlob) {
+    imagenPath = `${id}/imagen.${extension(imagenBlob, nombreImagen)}`;
+    const subidaImg = await supa.storage.from(BUCKET).upload(imagenPath, imagenBlob, {
+      contentType: imagenBlob.type || "application/octet-stream",
+    });
+    if (subidaImg.error) throw subidaImg.error;
+  }
+
+  const { data, error } = await supa
+    .from("botones")
+    .insert({ id, num, titulo, audio_path: audioPath, imagen_path: imagenPath })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
-async function dbBorrar(id) {
-  const db = await abrirDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(DB_STORE, "readwrite");
-    tx.objectStore(DB_STORE).delete(id);
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
+async function dbBorrar(boton) {
+  const { error } = await supa.from("botones").delete().eq("id", boton.id);
+  if (error) throw error;
+  const paths = [boton.audio_path, boton.imagen_path].filter(Boolean);
+  await supa.storage.from(BUCKET).remove(paths); // si falla queda un archivo huérfano, no rompe nada
+}
+
+function extension(blob, nombre) {
+  const porNombre = nombre && nombre.includes(".") ? nombre.split(".").pop().toLowerCase() : null;
+  if (porNombre && porNombre.length <= 5) return porNombre;
+  const mime = (blob.type || "").split(";")[0];
+  const mapa = {
+    "audio/mpeg": "mp3", "audio/mp4": "mp4", "video/mp4": "mp4", "audio/aac": "aac",
+    "audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/webm": "webm",
+    "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp",
+  };
+  return mapa[mime] || "bin";
 }
 
 // ---------- Estado ----------
@@ -58,9 +85,7 @@ let botones = [];
 let volumen = parseFloat(localStorage.getItem(CLAVE_VOLUMEN) ?? "0.8");
 let modoEliminar = false;
 
-const urlsAudio = new Map();   // id -> objectURL del audio
-const urlsImagen = new Map();  // id -> objectURL de la imagen
-const sonando = new Map();     // id -> Set<HTMLAudioElement>
+const sonando = new Map(); // id -> Set<HTMLAudioElement>
 
 // ---------- Elementos ----------
 
@@ -68,6 +93,7 @@ const $ = (sel) => document.querySelector(sel);
 
 const grilla = $("#grilla");
 const vacio = $("#vacio");
+const aviso = $("#aviso");
 const sliderVolumen = $("#volumen");
 const iconoVolumen = $("#volumen-icono");
 const btnAgregar = $("#btn-agregar");
@@ -91,6 +117,7 @@ const btnQuitarImagen = $("#btn-quitar-imagen");
 const inputTitulo = $("#input-titulo");
 const btnCancelar = $("#btn-cancelar");
 const btnConfirmar = $("#btn-confirmar");
+const errorGuardar = $("#error-guardar");
 
 // ---------- Volumen ----------
 
@@ -109,20 +136,9 @@ sliderVolumen.addEventListener("input", () => aplicarVolumen(parseFloat(sliderVo
 
 // ---------- Render de la grilla ----------
 
-function urlAudio(boton) {
-  if (!urlsAudio.has(boton.id)) urlsAudio.set(boton.id, URL.createObjectURL(boton.audio));
-  return urlsAudio.get(boton.id);
-}
-
-function urlImagen(boton) {
-  if (!boton.imagen) return null;
-  if (!urlsImagen.has(boton.id)) urlsImagen.set(boton.id, URL.createObjectURL(boton.imagen));
-  return urlsImagen.get(boton.id);
-}
-
 function render() {
   grilla.innerHTML = "";
-  vacio.hidden = botones.length > 0;
+  vacio.hidden = botones.length > 0 || !aviso.hidden;
 
   for (const boton of botones) {
     const pad = document.createElement("button");
@@ -134,12 +150,11 @@ function render() {
     const cara = document.createElement("span");
     cara.className = "pad-cara";
 
-    const imgUrl = urlImagen(boton);
-    if (imgUrl) {
+    if (boton.imagen_path) {
       pad.classList.add("con-imagen");
       const img = document.createElement("img");
       img.className = "pad-imagen";
-      img.src = imgUrl;
+      img.src = urlPublica(boton.imagen_path);
       img.alt = "";
       cara.appendChild(img);
     } else {
@@ -167,6 +182,12 @@ function render() {
   }
 }
 
+function mostrarAviso(texto) {
+  aviso.textContent = texto;
+  aviso.hidden = !texto;
+  if (texto) vacio.hidden = true;
+}
+
 // ---------- Reproducción ----------
 
 function onClickPad(boton) {
@@ -174,7 +195,7 @@ function onClickPad(boton) {
     eliminarBoton(boton);
     return;
   }
-  const audio = new Audio(urlAudio(boton));
+  const audio = new Audio(urlPublica(boton.audio_path));
   audio.volume = volumen;
 
   if (!sonando.has(boton.id)) sonando.set(boton.id, new Set());
@@ -222,21 +243,25 @@ btnEliminar.addEventListener("click", () => {
 });
 
 async function eliminarBoton(boton) {
-  await dbBorrar(boton.id);
   // frenar sonidos activos de ese botón
   const set = sonando.get(boton.id);
   if (set) { for (const audio of set) audio.pause(); sonando.delete(boton.id); }
-  if (urlsAudio.has(boton.id)) { URL.revokeObjectURL(urlsAudio.get(boton.id)); urlsAudio.delete(boton.id); }
-  if (urlsImagen.has(boton.id)) { URL.revokeObjectURL(urlsImagen.get(boton.id)); urlsImagen.delete(boton.id); }
   botones = botones.filter((b) => b.id !== boton.id);
   render();
+  try {
+    await dbBorrar(boton);
+  } catch (err) {
+    console.error("No se pudo borrar el botón:", err);
+    mostrarAviso("No se pudo borrar el botón. Revisá la conexión y recargá la página.");
+  }
   if (botones.length === 0 && modoEliminar) btnEliminar.click(); // salir del modo si no queda nada
 }
 
 // ---------- Modal: estado del formulario ----------
 
-let nuevoAudio = null;   // Blob elegido o grabado
-let nuevaImagen = null;  // Blob de imagen
+let nuevoAudio = null;        // Blob elegido o grabado
+let nombreNuevoAudio = null;  // nombre original del archivo (si vino de archivo)
+let nuevaImagen = null;       // Blob de imagen
 let urlPreviewAudio = null;
 let urlPreviewImagen = null;
 
@@ -252,6 +277,7 @@ function abrirModal() {
 
 function resetearModal() {
   nuevoAudio = null;
+  nombreNuevoAudio = null;
   nuevaImagen = null;
   if (urlPreviewAudio) { URL.revokeObjectURL(urlPreviewAudio); urlPreviewAudio = null; }
   if (urlPreviewImagen) { URL.revokeObjectURL(urlPreviewImagen); urlPreviewImagen = null; }
@@ -262,6 +288,8 @@ function resetearModal() {
   previewImagen.removeAttribute("src");
   btnQuitarImagen.hidden = true;
   btnConfirmar.disabled = true;
+  btnConfirmar.textContent = "Agregar botón";
+  errorGuardar.hidden = true;
   errorMic.hidden = true;
   timer.hidden = true;
   detenerGrabacion(true);
@@ -289,11 +317,12 @@ tabGrabar.addEventListener("click", () => cambiarTab("grabar"));
 inputAudio.addEventListener("change", () => {
   const archivo = inputAudio.files[0];
   if (!archivo) return;
-  setNuevoAudio(archivo);
+  setNuevoAudio(archivo, archivo.name);
 });
 
-function setNuevoAudio(blob) {
+function setNuevoAudio(blob, nombre = null) {
   nuevoAudio = blob;
+  nombreNuevoAudio = nombre;
   if (urlPreviewAudio) URL.revokeObjectURL(urlPreviewAudio);
   urlPreviewAudio = URL.createObjectURL(blob);
   audioPreview.src = urlPreviewAudio;
@@ -385,30 +414,55 @@ formBoton.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!nuevoAudio) return;
 
-  const num = proximoNum();
-  const boton = {
-    id: crypto.randomUUID(),
-    num,
-    titulo: inputTitulo.value.trim() || `Botón ${num}`,
-    audio: nuevoAudio,
-    imagen: nuevaImagen,
-    creado: new Date().toISOString(),
-  };
+  btnConfirmar.disabled = true;
+  btnConfirmar.textContent = "Guardando…";
+  errorGuardar.hidden = true;
 
-  await dbGuardar(boton);
-  botones.push(boton);
-  render();
-  modal.close();
+  const num = proximoNum();
+  try {
+    const boton = await dbGuardar({
+      num,
+      titulo: inputTitulo.value.trim() || `Botón ${num}`,
+      audioBlob: nuevoAudio,
+      nombreAudio: nombreNuevoAudio,
+      imagenBlob: nuevaImagen,
+      nombreImagen: nuevaImagen ? nuevaImagen.name : null,
+    });
+    botones.push(boton);
+    render();
+    modal.close();
+  } catch (err) {
+    console.error("No se pudo guardar el botón:", err);
+    errorGuardar.textContent = "No se pudo guardar. Revisá la conexión e intentá de nuevo.";
+    errorGuardar.hidden = false;
+    btnConfirmar.disabled = false;
+    btnConfirmar.textContent = "Agregar botón";
+  }
 });
 
-// ---------- Inicio ----------
+// ---------- Carga y sincronización ----------
 
-(async function iniciar() {
+async function cargarBotones() {
   try {
-    botones = (await dbTodos()).sort((a, b) => a.num - b.num);
+    botones = await dbTodos();
+    mostrarAviso("");
+    render();
   } catch (err) {
-    console.error("No se pudo leer la base de datos:", err);
-    botones = [];
+    console.error("No se pudo cargar la botonera:", err);
+    mostrarAviso("No se pudo cargar la botonera. Revisá la conexión a internet y recargá la página.");
   }
-  render();
+}
+
+(function iniciar() {
+  if (!configurada) {
+    mostrarAviso("Falta configurar Supabase: completá config.js con la URL y la anon key del proyecto.");
+    btnAgregar.disabled = true;
+    btnEliminar.disabled = true;
+    return;
+  }
+  cargarBotones();
+  // al volver a la pestaña, refrescar por si alguien más agregó o borró botones
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) cargarBotones();
+  });
 })();

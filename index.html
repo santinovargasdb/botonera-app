@@ -28,6 +28,8 @@
   </header>
 
   <main>
+    <p class="aviso" id="aviso" hidden></p>
+
     <div class="grilla" id="grilla"></div>
 
     <div class="vacio" id="vacio" hidden>
@@ -88,6 +90,8 @@
         <input type="text" id="input-titulo" maxlength="40" placeholder="Botón 1" />
       </section>
 
+      <p class="nota error-guardar" id="error-guardar" hidden></p>
+
       <footer class="modal-pie">
         <button type="button" class="btn btn-secundario" id="btn-cancelar">Cancelar</button>
         <button type="submit" class="btn btn-confirmar" id="btn-confirmar" disabled>Agregar botón</button>
@@ -95,6 +99,8 @@
     </form>
   </dialog>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
