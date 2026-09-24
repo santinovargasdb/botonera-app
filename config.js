@@ -1,8 +1,8 @@
-// == Configuración de Supabase ==
-// La anon key es pública por diseño (viaja al navegador de cada visitante);
-// el acceso real lo controlan las políticas RLS del proyecto.
-window.BOTONERA_CONFIG = {
-  SUPABASE_URL: "PONER_URL_DEL_PROYECTO",
-  SUPABASE_ANON_KEY: "PONER_ANON_KEY",
-};
-//mucha suerte a cualquiera configurando esto
+// Este archivo ya no se carga en producción.
+// Las credenciales se pasan como variables de entorno de Vercel
+// y las expone el endpoint /api/config.
+//
+// Para desarrollo local usá `vercel dev` (requiere Vercel CLI):
+//   npm i -g vercel
+//   vercel dev
+// Y configurá las variables en el dashboard o con `vercel env pull`.
