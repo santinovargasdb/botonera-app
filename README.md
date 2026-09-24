@@ -1,7 +1,7 @@
 # Botonesmata 📢
 
 Botonera de sonidos para factor cómico. Tocás un botón y suena.
-
+      
 ## Cómo usarla
 
 Abrí `index.html` en el navegador y listo. No necesita servidor ni instalación.
@@ -31,3 +31,4 @@ Abrí `index.html` en el navegador y listo. No necesita servidor ni instalación
 | `styles.css` | Estilos (pads tipo sampler, modo eliminar, modal) |
 | `app.js` | Lógica: IndexedDB, reproducción, grabación, volumen |
      
+adasd
