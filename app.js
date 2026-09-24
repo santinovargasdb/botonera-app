@@ -370,7 +370,9 @@ btnGrabar.addEventListener("click", async () => {
       console.log("Blob creado:", blob.type, blob.size);
       setNuevoAudio(blob);
     } else {
-      console.log("No hay chunks para guardar");
+      console.error("No hay chunks para guardar");
+      errorMic.textContent = "No se grabó audio. Intentá de nuevo.";
+      errorMic.hidden = false;
     }
   };
   mediaRecorder.start();
