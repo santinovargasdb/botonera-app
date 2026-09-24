@@ -5,3 +5,4 @@ window.BOTONERA_CONFIG = {
   SUPABASE_URL: "PONER_URL_DEL_PROYECTO",
   SUPABASE_ANON_KEY: "PONER_ANON_KEY",
 };
+//mucha suerte a cualquiera configurando esto
