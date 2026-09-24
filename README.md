@@ -1,7 +1,7 @@
 # Botonesmata 📢
 
 Botonera de sonidos para factor cómico. Tocás un botón y suena.
-
+      
 ## Cómo usarla
 
 Abrí `index.html` en el navegador y listo. No necesita servidor ni instalación.
