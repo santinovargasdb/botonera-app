@@ -345,6 +345,8 @@ btnGrabar.addEventListener("click", async () => {
   errorMic.hidden = true;
   try {
     streamMic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    errorMic.textContent = "✓ Micrófono activo";
+    errorMic.hidden = false;
   } catch {
     errorMic.textContent = "No se pudo acceder al micrófono. Revisá los permisos del navegador.";
     errorMic.hidden = false;
@@ -358,13 +360,20 @@ btnGrabar.addEventListener("click", async () => {
       break;
     }
   }
-  mediaRecorder = new MediaRecorder(streamMic, mime ? { mimeType: mime } : {});
+  if (!mime) {
+    errorMic.textContent = "Tu navegador no soporta ningún formato de audio.";
+    errorMic.hidden = false;
+    return;
+  }
+  mediaRecorder = new MediaRecorder(streamMic, { mimeType: mime });
   mediaRecorder.ondataavailable = (e) => {
     console.log("ondataavailable:", e.data.size);
+    errorMic.textContent = `Grabando... (${chunks.length + 1} chunks)`;
     if (e.data.size) chunks.push(e.data);
   };
   mediaRecorder.onstop = () => {
     console.log("onstop - chunks:", chunks.length, "mimeType:", mediaRecorder.mimeType);
+    errorMic.hidden = true;
     if (chunks.length) {
       const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
       console.log("Blob creado:", blob.type, blob.size);
