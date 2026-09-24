@@ -359,9 +359,19 @@ btnGrabar.addEventListener("click", async () => {
     }
   }
   mediaRecorder = new MediaRecorder(streamMic, mime ? { mimeType: mime } : {});
-  mediaRecorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  mediaRecorder.ondataavailable = (e) => {
+    console.log("ondataavailable:", e.data.size);
+    if (e.data.size) chunks.push(e.data);
+  };
   mediaRecorder.onstop = () => {
-    if (chunks.length) setNuevoAudio(new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }));
+    console.log("onstop - chunks:", chunks.length, "mimeType:", mediaRecorder.mimeType);
+    if (chunks.length) {
+      const blob = new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      console.log("Blob creado:", blob.type, blob.size);
+      setNuevoAudio(blob);
+    } else {
+      console.log("No hay chunks para guardar");
+    }
   };
   mediaRecorder.start();
 
