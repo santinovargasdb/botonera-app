@@ -30,5 +30,3 @@ Abrí `index.html` en el navegador y listo. No necesita servidor ni instalación
 | `index.html` | Estructura de la página y el modal |
 | `styles.css` | Estilos (pads tipo sampler, modo eliminar, modal) |
 | `app.js` | Lógica: IndexedDB, reproducción, grabación, volumen |
-     
-adasd
