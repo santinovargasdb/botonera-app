@@ -351,8 +351,14 @@ btnGrabar.addEventListener("click", async () => {
     return;
   }
   chunks = [];
-  const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-  mediaRecorder = mime ? new MediaRecorder(streamMic, { mimeType: mime }) : new MediaRecorder(streamMic);
+  let mime = "";
+  for (const tipo of ["audio/webm", "audio/mp4", "audio/wav", "audio/ogg"]) {
+    if (MediaRecorder.isTypeSupported(tipo)) {
+      mime = tipo;
+      break;
+    }
+  }
+  mediaRecorder = new MediaRecorder(streamMic, mime ? { mimeType: mime } : {});
   mediaRecorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
   mediaRecorder.onstop = () => {
     if (chunks.length) setNuevoAudio(new Blob(chunks, { type: mediaRecorder.mimeType || "audio/webm" }));
