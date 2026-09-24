@@ -100,7 +100,16 @@
   </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="config.js"></script>
-  <script src="app.js"></script>
+  <script>
+    (async () => {
+      const res = await fetch('/api/config');
+      const config = await res.json();
+      window.BOTONERA_CONFIG = config;
+
+      const script = document.createElement('script');
+      script.src = 'app.js';
+      document.body.appendChild(script);
+    })();
+  </script>
 </body>
 </html>
